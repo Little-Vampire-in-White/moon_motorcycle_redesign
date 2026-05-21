@@ -1,87 +1,78 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:moon_motorcycle_redesign/services/auth_service.dart';
+import 'package:moon_motorcycle_redesign/services/api_config.dart';
 
 class NotificationService {
-  final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
+  static final NotificationService _instance = NotificationService._internal();
+  factory NotificationService() => _instance;
+  NotificationService._internal();
+
   final FlutterLocalNotificationsPlugin _flutterLocalNotificationsPlugin =
       FlutterLocalNotificationsPlugin();
   final AuthService _authService = AuthService();
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  Future<String?> init() async {
-    final fcmToken = await _firebaseMessaging.getToken();
-    print('FCM Token: $fcmToken');
-
+  Future<void> init() async {
     const AndroidInitializationSettings initializationSettingsAndroid =
         AndroidInitializationSettings('@mipmap/ic_launcher');
     const InitializationSettings initializationSettings = InitializationSettings(
       android: initializationSettingsAndroid,
     );
     await _flutterLocalNotificationsPlugin.initialize(initializationSettings);
-
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      print('Got a message whilst in the foreground!');
-      if (message.notification != null) {
-        print('Message also contained a notification: ${message.notification}');
-        _showAndSaveNotification(message.notification!);
-      }
-    });
-    return fcmToken;
   }
 
   Future<void> requestPermission() async {
-    await _firebaseMessaging.requestPermission();
+    final AndroidFlutterLocalNotificationsPlugin? androidImplementation =
+        _flutterLocalNotificationsPlugin.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+    await androidImplementation?.requestNotificationsPermission();
   }
 
   void showLoginNotification() {
-    _showAndSaveNotification(const RemoteNotification(
-      title: 'Welcome Back!',
-      body: 'You have successfully logged in.',
-    ));
+    _showAndSaveNotification('Welcome Back!', 'You have successfully logged in.');
   }
 
   void showBookingApprovedNotification() {
-    _showAndSaveNotification(const RemoteNotification(
-      title: 'Booking Approved!',
-      body: 'Your motorcycle booking has been approved.',
-    ));
+    _showAndSaveNotification('Booking Approved!', 'Your motorcycle booking has been approved.');
   }
 
-  Future<void> _showAndSaveNotification(RemoteNotification notification) async {
-    // Show the notification
+  Future<void> _showAndSaveNotification(String title, String body) async {
     const AndroidNotificationDetails androidPlatformChannelSpecifics =
         AndroidNotificationDetails(
-      'high_importance_channel', // channel id
-      'High Importance Notifications', // channel name
+      'high_importance_channel',
+      'High Importance Notifications',
       importance: Importance.max,
       priority: Priority.high,
       showWhen: true,
     );
     const NotificationDetails platformChannelSpecifics =
         NotificationDetails(android: androidPlatformChannelSpecifics);
+    
     await _flutterLocalNotificationsPlugin.show(
-      notification.hashCode, // Use a unique id for each notification
-      notification.title,
-      notification.body,
+      DateTime.now().millisecond,
+      title,
+      body,
       platformChannelSpecifics,
     );
 
-    // Save the notification to Firestore
-    final user = _authService.currentUser;
-    if (user != null) {
-      await _firestore
-          .collection('users')
-          .doc(user.uid)
-          .collection('notifications')
-          .add({
-        'title': notification.title,
-        'body': notification.body,
-        'timestamp': FieldValue.serverTimestamp(),
-        'isRead': false,
-      });
+    final userId = _authService.currentUserId;
+    if (userId != null) {
+      try {
+        await http.post(
+          Uri.parse('${ApiConfig.baseUrl}/users/$userId/notifications'),
+          headers: {
+            'Content-Type': 'application/json',
+            if (_authService.token != null) 'Authorization': 'Bearer ${_authService.token}',
+          },
+          body: jsonEncode({
+            'title': title,
+            'body': body,
+          }),
+        );
+      } catch (e) {
+        print('Error saving notification: $e');
+      }
     }
   }
 }

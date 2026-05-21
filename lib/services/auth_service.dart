@@ -1,311 +1,212 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:device_info_plus/device_info_plus.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:google_sign_in/google_sign_in.dart';
-import 'dart:io';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:moon_motorcycle_redesign/services/api_config.dart';
 
 class AuthService {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final GoogleSignIn _googleSignIn = GoogleSignIn();
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final DeviceInfoPlugin _deviceInfo = DeviceInfoPlugin();
+  final _storage = const FlutterSecureStorage();
+  
+  static final AuthService _instance = AuthService._internal();
+  factory AuthService() => _instance;
+  AuthService._internal();
 
-  // Get the current user
-  User? get currentUser => _auth.currentUser;
+  Map<String, dynamic>? _userData;
+  String? _token;
 
-  // Stream of authentication state changes
-  Stream<User?> get authStateChanges => _auth.authStateChanges();
+  Map<String, dynamic>? get currentUserData => _userData;
+  String? get token => _token;
 
-  // Record Login Activity
-  Future<void> _recordLoginActivity(User user) async {
-    String device = await _getDeviceIdentifier();
-    await _firestore
-        .collection('users')
-        .doc(user.uid)
-        .collection('login_activity')
-        .add({'timestamp': FieldValue.serverTimestamp(), 'device': device});
-  }
-
-  Future<String> _getDeviceIdentifier() async {
-    if (Platform.isAndroid) {
-      AndroidDeviceInfo androidInfo = await _deviceInfo.androidInfo;
-      return '${androidInfo.model} (Android ${androidInfo.version.release})';
-    } else if (Platform.isIOS) {
-      IosDeviceInfo iosInfo = await _deviceInfo.iosInfo;
-      return '${iosInfo.utsname.machine} (iOS ${iosInfo.systemVersion})';
-    }
-    return 'Unknown Device';
-  }
-
-  // Create or update user document in Firestore
-  Future<void> _createOrUpdateUserDocument(User user, {String? displayName, String? fcmToken}) async {
-    final userDocRef = _firestore.collection('users').doc(user.uid);
-    final userDoc = await userDocRef.get();
-
-    final name = displayName ?? user.displayName;
-
-    if (!userDoc.exists) {
-      await userDocRef.set({
-        'uid': user.uid,
-        'email': user.email,
-        'displayName': name ?? user.email?.split('@')[0] ?? 'Motorcycle Rider',
-        'photoURL': user.photoURL,
-        'address': 'Not set',
-        'fcmToken': fcmToken,
-        'isAdmin': false, // Default to not admin
-      });
-    } else {
-      final data = userDoc.data() as Map<String, dynamic>;
-      final Map<String, dynamic> updates = {};
-
-      if (fcmToken != null) {
-        updates['fcmToken'] = fcmToken;
-      }
-
-      final existingName = data['displayName'] as String?;
-      if ((existingName == null || existingName.isEmpty) && name != null) {
-        updates['displayName'] = name;
-      }
-
-      if (updates.isNotEmpty) {
-        await userDocRef.update(updates);
-      }
-    }
-  }
-
-  // Get user data from Firestore
-  Future<DocumentSnapshot> getUserData() async {
-    return await _firestore.collection('users').doc(currentUser!.uid).get();
-  }
-
-  // --- Admin Methods ---
-
-  Future<void> toggleAdminStatus(String uid, bool currentStatus) async {
-    await _firestore.collection('users').doc(uid).update({'isAdmin': !currentStatus});
-  }
-
-  // Note: Deleting a user from Firestore does NOT delete their auth record.
-  // Proper user deletion requires a cloud function.
-  Future<void> deleteUser(String uid) async {
-    await _firestore.collection('users').doc(uid).delete();
-  }
-
-  Future<int> getTotalProducts() async {
-    final QuerySnapshot snapshot = await _firestore.collection('motorcycles').get();
-    return snapshot.docs.length;
-  }
-
-  Future<int> getTotalBookings() async {
-    final QuerySnapshot snapshot = await _firestore.collection('bookings').get();
-    return snapshot.docs.length;
-  }
-
-  Future<int> getTotalUsers() async {
-    final QuerySnapshot snapshot = await _firestore.collection('users').get();
-    return snapshot.docs.length;
-  }
-
-  Future<double> getRevenue() async {
-    final QuerySnapshot snapshot = await _firestore.collection('bookings').get();
-    double totalRevenue = 0;
-    for (var doc in snapshot.docs) {
-      totalRevenue += (doc['totalCost'] as num?)?.toDouble() ?? 0.0;
-    }
-    return totalRevenue;
-  }
-
-
-  Future<double> getTotalSales() async {
-    final QuerySnapshot snapshot = await _firestore
-        .collection('bookings')
-        .where('status', isEqualTo: 'approved')
-        .get();
-    double totalSales = 0;
-    for (var doc in snapshot.docs) {
-      totalSales += (doc['totalCost'] as num?)?.toDouble() ?? 0.0;
-    }
-    return totalSales;
-  }
-
-
-  Future<double> getAverageSales() async {
-    final QuerySnapshot snapshot = await _firestore
-        .collection('bookings')
-        .where('status', isEqualTo: 'approved')
-        .get();
-    if (snapshot.docs.isEmpty) {
-      return 0.0;
-    }
-    double totalSales = 0;
-    for (var doc in snapshot.docs) {
-      totalSales += (doc['totalCost'] as num?)?.toDouble() ?? 0.0;
-    }
-    return totalSales / snapshot.docs.length;
-  }
-
-  Future<List<Map<String, dynamic>>> getTrendingMotorcycles() async {
-    final QuerySnapshot snapshot = await _firestore
-        .collection('bookings')
-        .where('status', isEqualTo: 'approved')
-        .get();
-
-    if (snapshot.docs.isEmpty) {
-      return [];
-    }
-
-    final Map<String, int> motorcycleCounts = {};
-    for (var doc in snapshot.docs) {
-      final motorcycleId = doc['motorcycleId'] as String;
-      motorcycleCounts[motorcycleId] = (motorcycleCounts[motorcycleId] ?? 0) + 1;
-    }
-
-    final sortedMotorcycles = motorcycleCounts.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-
-    final topMotorcycles = sortedMotorcycles.take(3);
-
-    final List<Map<String, dynamic>> trendingItems = [];
-    for (var entry in topMotorcycles) {
-      final motorcycleDoc = await _firestore.collection('motorcycles').doc(entry.key).get();
-      if (motorcycleDoc.exists) {
-        trendingItems.add({
-          'name': motorcycleDoc.data()?['name'] ?? 'Unknown',
-          'imageUrl': motorcycleDoc.data()?['imageUrl'] ?? '',
-          'bookings': entry.value,
-        });
-      }
-    }
-    return trendingItems;
-  }
-
-
-  Future<Map<int, double>> getWeeklyChartData(String status) async {
-    final Map<int, double> weeklyData = { for (var i = 0; i < 7; i++) i: 0.0 };
-    final now = DateTime.now();
-    final lastSevenDays = now.subtract(const Duration(days: 7));
-
-    Query query = _firestore.collection('bookings');
-    if (status == 'approved') {
-        query = query.where('status', isEqualTo: 'approved');
-    }
-
-    final QuerySnapshot snapshot = await query.where('startDate', isGreaterThanOrEqualTo: lastSevenDays).get();
-
-    for (var doc in snapshot.docs) {
-      final bookingDate = (doc['startDate'] as Timestamp).toDate();
-      final dayOfWeek = bookingDate.weekday % 7; // Sunday=0, Monday=1, ...
-      weeklyData.update(dayOfWeek, (value) => value + ((doc['totalCost'] as num?)?.toDouble() ?? 0.0));
-    }
-    return weeklyData;
-  }
-
-  // Update user data in Firestore
-  Future<void> updateUserData(Map<String, dynamic> data) async {
-    await _firestore.collection('users').doc(currentUser!.uid).update(data);
-  }
-
-  // Change user password
-  Future<bool> changePassword(String currentPassword, String newPassword) async {
+  Future<bool> login(String email, String password) async {
     try {
-      final user = _auth.currentUser!;
-      final cred = EmailAuthProvider.credential(email: user.email!, password: currentPassword);
-      await user.reauthenticateWithCredential(cred);
-      await user.updatePassword(newPassword);
-      return true;
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/auth/login'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email, 'password': password}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        _token = data['token'];
+        _userData = data['user'];
+        
+        await _storage.write(key: 'token', value: _token);
+        await _storage.write(key: 'user', value: jsonEncode(_userData));
+        return true;
+      }
+      return false;
     } catch (e) {
-      print(e);
+      print('Login error: $e');
       return false;
     }
   }
 
-  // Sign in with Google
-  Future<User?> signInWithGoogle({String? fcmToken}) async {
+  Future<bool> register(String email, String password, String displayName, String address) async {
     try {
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
-      if (googleUser == null) return null;
-
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
-      final AuthCredential credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
+      final id = DateTime.now().millisecondsSinceEpoch.toString();
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/auth/register'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'id': id,
+          'email': email,
+          'password': password,
+          'displayName': displayName,
+          'address': address,
+        }),
       );
 
-      final UserCredential userCredential = await _auth.signInWithCredential(credential);
-      final user = userCredential.user;
-      if (user != null) {
-        await _createOrUpdateUserDocument(user, fcmToken: fcmToken);
-        await _recordLoginActivity(user);
+      if (response.statusCode == 201) {
+        return await login(email, password);
       }
-      return user;
+      return false;
     } catch (e) {
-      print(e);
-      return null;
+      print('Registration error: $e');
+      return false;
     }
   }
 
-  // Sign up with email and password
-  Future<User?> signUpWithEmailAndPassword(String email, String password, {String? fcmToken}) async {
+  Future<void> logout() async {
+    _token = null;
+    _userData = null;
+    await _storage.deleteAll();
+  }
+
+  Future<bool> tryAutoLogin() async {
+    _token = await _storage.read(key: 'token');
+    final userJson = await _storage.read(key: 'user');
+    if (_token != null && userJson != null) {
+      _userData = jsonDecode(userJson);
+      return true;
+    }
+    return false;
+  }
+
+  bool get isLoggedIn => _token != null;
+  String? get currentUserId => _userData?['id']?.toString();
+
+  Future<List<Map<String, dynamic>>> getNotifications() async {
     try {
-      final UserCredential result = await _auth.createUserWithEmailAndPassword(email: email, password: password);
-      final user = result.user;
-      if (user != null) {
-        await _createOrUpdateUserDocument(user, displayName: email.split('@')[0], fcmToken: fcmToken);
-        await _recordLoginActivity(user);
+      final response = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/users/$currentUserId/notifications'),
+        headers: {
+          if (_token != null) 'Authorization': 'Bearer $_token',
+        },
+      );
+      if (response.statusCode == 200) {
+        List<dynamic> data = jsonDecode(response.body);
+        return data.cast<Map<String, dynamic>>();
       }
-      return user;
+      return [];
     } catch (e) {
-      print(e);
-      return null;
+      print('Error fetching notifications: $e');
+      return [];
     }
   }
 
-  // Sign in with email and password
-  Future<User?> signInWithEmailAndPassword(String email, String password, {String? fcmToken}) async {
+  // Helper method for updating profile
+  Future<bool> updateProfile(Map<String, dynamic> data) async {
     try {
-      final UserCredential result = await _auth.signInWithEmailAndPassword(email: email, password: password);
-      final user = result.user;
-      if (user != null) {
-        await _createOrUpdateUserDocument(user, displayName: email.split('@')[0], fcmToken: fcmToken);
-        await _recordLoginActivity(user);
+      final response = await http.put(
+        Uri.parse('${ApiConfig.baseUrl}/users/$currentUserId'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (_token != null) 'Authorization': 'Bearer $_token',
+        },
+        body: jsonEncode(data),
+      );
+      if (response.statusCode == 200) {
+        _userData = {...?_userData, ...data};
+        await _storage.write(key: 'user', value: jsonEncode(_userData));
+        return true;
       }
-      return user;
+      return false;
     } catch (e) {
-      print(e);
-      return null;
+      print('Error updating profile: $e');
+      return false;
     }
   }
 
-  // Sign out
-  Future<void> signOut() async {
-    await _googleSignIn.signOut();
-    await _auth.signOut();
-  }
-
-  // Phone number verification
-  Future<void> verifyPhoneNumber(
-    String phoneNumber,
-    Function(PhoneAuthCredential) verificationCompleted,
-    Function(FirebaseAuthException) verificationFailed,
-    Function(String, int?) codeSent,
-    Function(String) codeAutoRetrievalTimeout,
-  ) async {
-    await _auth.verifyPhoneNumber(
-      phoneNumber: phoneNumber,
-      verificationCompleted: verificationCompleted,
-      verificationFailed: verificationFailed,
-      codeSent: codeSent,
-      codeAutoRetrievalTimeout: codeAutoRetrievalTimeout,
-    );
-  }
-
-  // Sign in with phone credential
-  Future<UserCredential> signInWithPhoneCredential(PhoneAuthCredential credential, {String? fcmToken}) async {
-    final userCredential = await _auth.signInWithCredential(credential);
-    final user = userCredential.user;
-    if (user != null) {
-      await _createOrUpdateUserDocument(user, fcmToken: fcmToken);
-      await _recordLoginActivity(user);
+  Future<bool> changePassword(String currentPassword, String newPassword) async {
+    try {
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/auth/change-password'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (_token != null) 'Authorization': 'Bearer $_token',
+        },
+        body: jsonEncode({
+          'currentPassword': currentPassword,
+          'newPassword': newPassword,
+        }),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print('Error changing password: $e');
+      return false;
     }
-    return userCredential;
+  }
+
+  Future<List<Map<String, dynamic>>> getLoginActivity() async {
+    try {
+      final response = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/users/$currentUserId/login-activity'),
+        headers: {
+          if (_token != null) 'Authorization': 'Bearer $_token',
+        },
+      );
+      if (response.statusCode == 200) {
+        List<dynamic> data = jsonDecode(response.body);
+        return data.cast<Map<String, dynamic>>();
+      }
+      return [];
+    } catch (e) {
+      print('Error fetching login activity: $e');
+      return [];
+    }
+  }
+
+  Future<bool> uploadAvatar(XFile imageFile) async {
+    try {
+      var request = http.MultipartRequest('POST', Uri.parse('${ApiConfig.baseUrl}/users/$currentUserId/avatar'));
+      if (_token != null) {
+        request.headers['Authorization'] = 'Bearer $_token';
+      }
+      request.files.add(await http.MultipartFile.fromPath('avatar', imageFile.path));
+      var streamedResponse = await request.send();
+      var response = await http.Response.fromStream(streamedResponse);
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        _userData = {...?_userData, 'photoURL': data['url']};
+        await _storage.write(key: 'user', value: jsonEncode(_userData));
+        return true;
+      }
+      return false;
+    } catch (e) {
+      print('Error uploading avatar: $e');
+      return false;
+    }
+  }
+
+  Future<bool> uploadLicense(XFile imageFile) async {
+    try {
+      var request = http.MultipartRequest('POST', Uri.parse('${ApiConfig.baseUrl}/users/$currentUserId/license'));
+      if (_token != null) {
+        request.headers['Authorization'] = 'Bearer $_token';
+      }
+      request.files.add(await http.MultipartFile.fromPath('license', imageFile.path));
+      var streamedResponse = await request.send();
+      var response = await http.Response.fromStream(streamedResponse);
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        _userData = {...?_userData, 'driverLicenseUrl': data['url']};
+        await _storage.write(key: 'user', value: jsonEncode(_userData));
+        return true;
+      }
+      return false;
+    } catch (e) {
+      print('Error uploading license: $e');
+      return false;
+    }
   }
 }

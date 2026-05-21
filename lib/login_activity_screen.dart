@@ -1,4 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:moon_motorcycle_redesign/services/auth_service.dart';
@@ -25,13 +24,8 @@ class LoginActivityScreen extends StatelessWidget {
         ),
         centerTitle: true,
       ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('users')
-            .doc(authService.currentUser!.uid)
-            .collection('login_activity')
-            .orderBy('timestamp', descending: true)
-            .snapshots(),
+      body: FutureBuilder<List<Map<String, dynamic>>>(
+        future: authService.getLoginActivity(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -39,7 +33,7 @@ class LoginActivityScreen extends StatelessWidget {
           if (snapshot.hasError) {
             return const Center(child: Text("Error loading login activity"));
           }
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          if (!snapshot.hasData || snapshot.data!.isEmpty) {
             return Center(
               child: Text(
                 'No recent login activity.',
@@ -48,23 +42,23 @@ class LoginActivityScreen extends StatelessWidget {
             );
           }
 
-          final activities = snapshot.data!.docs;
+          final activities = snapshot.data!;
 
           return ListView.builder(
             itemCount: activities.length,
             itemBuilder: (context, index) {
-              final activity = activities[index].data() as Map<String, dynamic>;
-              final timestamp = activity['timestamp'] as Timestamp?;
+              final activity = activities[index];
+              final timestampStr = activity['timestamp'] as String?;
               final device = activity['device'] as String? ?? 'Unknown Device';
 
               return ListTile(
                 leading: const Icon(Icons.security_sharp, color: Colors.teal, size: 32),
                 title: Text(
-                  device, // This will now display the device info
+                  device,
                   style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 16),
                 ),
                 subtitle: Text(
-                  timestamp != null ? _formatTimestamp(timestamp.toDate()) : 'Just now',
+                  timestampStr != null ? _formatTimestamp(DateTime.parse(timestampStr)) : 'Just now',
                   style: GoogleFonts.poppins(fontSize: 14, color: Colors.grey[600]),
                 ),
               );
@@ -76,6 +70,6 @@ class LoginActivityScreen extends StatelessWidget {
   }
 
   String _formatTimestamp(DateTime time) {
-    return '${time.toLocal().toString().split('.')[0]}';
+    return time.toLocal().toString().split('.')[0];
   }
 }

@@ -1,5 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 class Booking {
   final String id;
   final String userId;
@@ -9,6 +7,9 @@ class Booking {
   final double totalCost;
   final String status; // e.g., 'pending', 'approved', 'rejected'
   final String? rejectionReason;
+  final String? motorcycleName;
+  final String? imageUrl;
+  final String? userName;
 
   Booking({
     required this.id,
@@ -19,27 +20,40 @@ class Booking {
     required this.totalCost,
     this.status = 'pending',
     this.rejectionReason,
+    this.motorcycleName,
+    this.imageUrl,
+    this.userName,
   });
 
-  factory Booking.fromMap(String id, Map<String, dynamic> data) {
+  factory Booking.fromJson(Map<String, dynamic> json) {
+    double parseDouble(dynamic value) {
+      if (value is num) return value.toDouble();
+      if (value is String) return double.tryParse(value) ?? 0.0;
+      return 0.0;
+    }
+
     return Booking(
-      id: id,
-      userId: data['userId'] ?? '',
-      motorcycleId: data['motorcycleId'] ?? '',
-      startDate: (data['startDate'] as Timestamp).toDate(),
-      endDate: (data['endDate'] as Timestamp).toDate(),
-      totalCost: (data['totalCost'] as num?)?.toDouble() ?? 0.0,
-      status: data['status'] ?? 'pending',
-      rejectionReason: data['rejectionReason'] as String?,
+      id: json['id']?.toString() ?? '',
+      userId: json['userId']?.toString() ?? '',
+      motorcycleId: json['motorcycleId']?.toString() ?? '',
+      startDate: DateTime.parse(json['startDate']),
+      endDate: DateTime.parse(json['endDate']),
+      totalCost: parseDouble(json['totalCost']),
+      status: json['status'] ?? 'pending',
+      rejectionReason: json['rejectionReason'] as String?,
+      motorcycleName: json['motorcycleName'] as String?,
+      imageUrl: json['imageUrl'] as String?,
+      userName: json['userName'] as String?,
     );
   }
 
-  Map<String, dynamic> toMap() {
+  Map<String, dynamic> toJson() {
     return {
+      'id': id,
       'userId': userId,
       'motorcycleId': motorcycleId,
-      'startDate': startDate,
-      'endDate': endDate,
+      'startDate': startDate.toIso8601String(),
+      'endDate': endDate.toIso8601String(),
       'totalCost': totalCost,
       'status': status,
       'rejectionReason': rejectionReason,

@@ -17,11 +17,15 @@ class _SignupScreenState extends State<SignupScreen> {
   final NotificationService _notificationService = NotificationService();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _displayNameController = TextEditingController();
+  final TextEditingController _addressController = TextEditingController();
 
   @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _displayNameController.dispose();
+    _addressController.dispose();
     super.dispose();
   }
 
@@ -52,19 +56,32 @@ class _SignupScreenState extends State<SignupScreen> {
               style: GoogleFonts.poppins(fontSize: 16, color: Colors.grey[600]),
             ),
             const SizedBox(height: 40),
+            _buildTextField(label: 'Display Name', hint: 'Enter your name', controller: _displayNameController),
+            const SizedBox(height: 20),
             _buildTextField(label: 'Email', hint: 'Enter your email', controller: _emailController),
             const SizedBox(height: 20),
             _buildTextField(label: 'Password', hint: 'Enter your password', controller: _passwordController, obscureText: true),
+            const SizedBox(height: 20),
+            _buildTextField(label: 'Address', hint: 'Enter your address', controller: _addressController),
             const SizedBox(height: 40),
             SizedBox(
               height: 60,
               width: double.infinity,
               child: ElevatedButton(
                 onPressed: () async {
-                  final user = await _authService.signUpWithEmailAndPassword(_emailController.text, _passwordController.text, fcmToken: fcmToken);
-                  if (user != null) {
+                  final success = await _authService.register(
+                    _emailController.text,
+                    _passwordController.text,
+                    _displayNameController.text,
+                    _addressController.text,
+                  );
+                  if (success) {
                     _notificationService.showLoginNotification();
                     Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (context) => const HomePage()));
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Registration failed. Please try again.')),
+                    );
                   }
                 },
                 style: ElevatedButton.styleFrom(

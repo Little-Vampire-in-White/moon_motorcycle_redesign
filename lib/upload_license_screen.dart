@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
@@ -40,26 +39,25 @@ class _UploadLicenseScreenState extends State<UploadLicenseScreen> {
     });
 
     try {
-      final user = _authService.currentUser;
-      if (user == null) throw Exception("User not logged in");
-
-      final ref = FirebaseStorage.instance.ref().child('user_licenses').child(user.uid);
-      final uploadTask = await ref.putFile(File(_imageFile!.path));
-      final downloadUrl = await uploadTask.ref.getDownloadURL();
-
-      await _authService.updateUserData({'driverLicenseUrl': downloadUrl});
+      final success = await _authService.uploadLicense(_imageFile!);
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('License uploaded successfully!')),
-        );
-        Navigator.of(context).pop();
+        if (success) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('License uploaded successfully!')),
+          );
+          Navigator.of(context).pop();
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to upload license.')),
+          );
+        }
       }
     } catch (e) {
       print(e);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to upload license.')),
+          const SnackBar(content: Text('An error occurred during upload.')),
         );
       }
     } finally {
@@ -124,9 +122,9 @@ class _UploadLicenseScreenState extends State<UploadLicenseScreen> {
                 height: 180,
                 width: double.infinity,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1A1A2E).withOpacity(0.05),
+                  color: const Color(0xFF1A1A2E).withValues(alpha: 0.05),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0xFF1A1A2E).withOpacity(0.5), width: 2),
+                  border: Border.all(color: const Color(0xFF1A1A2E).withValues(alpha: 0.5), width: 2),
                    image: _imageFile != null
                       ? DecorationImage(
                           image: FileImage(File(_imageFile!.path)),

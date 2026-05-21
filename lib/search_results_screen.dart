@@ -1,8 +1,8 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:moon_motorcycle_redesign/models/motorcycle.dart';
 import 'package:moon_motorcycle_redesign/motorcycle_details_screen.dart';
+import 'package:moon_motorcycle_redesign/services/motorcycle_service.dart';
 
 class SearchResultsScreen extends StatelessWidget {
   const SearchResultsScreen({super.key});
@@ -14,8 +14,8 @@ class SearchResultsScreen extends StatelessWidget {
         title: Text('Results', style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
         centerTitle: true,
       ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance.collection('motorcycles').snapshots(),
+      body: FutureBuilder<List<Motorcycle>>(
+        future: MotorcycleService().getMotorcycles(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -23,13 +23,11 @@ class SearchResultsScreen extends StatelessWidget {
           if (snapshot.hasError) {
             return const Center(child: Text('Error loading motorcycles'));
           }
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          if (!snapshot.hasData || snapshot.data!.isEmpty) {
             return const Center(child: Text('No motorcycles found.'));
           }
 
-          final motorcycles = snapshot.data!.docs
-              .map((doc) => Motorcycle.fromMap(doc.id, doc.data() as Map<String, dynamic>))
-              .toList();
+          final motorcycles = snapshot.data!;
 
           return ListView.builder(
             itemCount: motorcycles.length,

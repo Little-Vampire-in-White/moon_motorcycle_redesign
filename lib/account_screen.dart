@@ -1,4 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:moon_motorcycle_redesign/services/auth_service.dart';
@@ -18,6 +17,16 @@ class _AccountScreenState extends State<AccountScreen> {
   bool _isLoading = false;
 
   @override
+  void initState() {
+    super.initState();
+    final userData = _authService.currentUserData;
+    if (userData != null) {
+      _displayNameController.text = userData['displayName'] ?? '';
+      _addressController.text = userData['address'] ?? '';
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5),
@@ -34,82 +43,66 @@ class _AccountScreenState extends State<AccountScreen> {
         ),
         centerTitle: true,
       ),
-      body: FutureBuilder<DocumentSnapshot>(
-        future: _authService.getUserData(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError || !snapshot.hasData || !snapshot.data!.exists) {
-            return const Center(child: Text('Error loading data'));
-          }
-
-          final userData = snapshot.data!.data() as Map<String, dynamic>;
-          _displayNameController.text = userData['displayName'] ?? '';
-          _addressController.text = userData['address'] ?? '';
-
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              children: [
-                _buildTextField(label: 'Display Name', controller: _displayNameController),
-                const SizedBox(height: 20),
-                _buildTextField(label: 'Address', controller: _addressController, maxLines: 2),
-                const SizedBox(height: 40),
-                _isLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : SizedBox(
-                        width: double.infinity,
-                        height: 60,
-                        child: ElevatedButton(
-                          onPressed: () async {
-                            setState(() {
-                              _isLoading = true;
-                            });
-                            await _authService.updateUserData({
-                              'displayName': _displayNameController.text,
-                              'address': _addressController.text,
-                            });
-                            setState(() {
-                              _isLoading = false;
-                            });
-                            if (mounted) {
-                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Changes saved!')),
-                              );
-                            }
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF1A1A2E),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(15),
-                            ),
-                          ),
-                          child: Text('Save Changes', style: GoogleFonts.poppins(fontSize: 20, color: Colors.white, fontWeight: FontWeight.bold)),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          children: [
+            _buildTextField(label: 'Display Name', controller: _displayNameController),
+            const SizedBox(height: 20),
+            _buildTextField(label: 'Address', controller: _addressController, maxLines: 2),
+            const SizedBox(height: 40),
+            _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : SizedBox(
+                    width: double.infinity,
+                    height: 60,
+                    child: ElevatedButton(
+                      onPressed: () async {
+                        setState(() {
+                          _isLoading = true;
+                        });
+                        final success = await _authService.updateProfile({
+                          'displayName': _displayNameController.text,
+                          'address': _addressController.text,
+                        });
+                        setState(() {
+                          _isLoading = false;
+                        });
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(success ? 'Changes saved!' : 'Error saving changes')),
+                          );
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF1A1A2E),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(15),
                         ),
                       ),
-                const SizedBox(height: 20),
-                SizedBox(
-                   width: double.infinity,
-                   height: 60,
-                   child: OutlinedButton.icon(
-                    onPressed: () {
-                      Navigator.of(context).push(MaterialPageRoute(builder: (context) => const UploadLicenseScreen()));
-                    },
-                    icon: const Icon(Icons.credit_card, color: Colors.black),
-                    label: Text('Upload Driver\'s License', style: GoogleFonts.poppins(color: Colors.black, fontSize: 18, fontWeight: FontWeight.w500)),
-                     style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Colors.black26),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(15),
-                      ),
+                      child: Text('Save Changes', style: GoogleFonts.poppins(fontSize: 20, color: Colors.white, fontWeight: FontWeight.bold)),
                     ),
-                   ),
+                  ),
+            const SizedBox(height: 20),
+            SizedBox(
+               width: double.infinity,
+               height: 60,
+               child: OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).push(MaterialPageRoute(builder: (context) => const UploadLicenseScreen()));
+                },
+                icon: const Icon(Icons.credit_card, color: Colors.black),
+                label: Text('Upload Driver\'s License', style: GoogleFonts.poppins(color: Colors.black, fontSize: 18, fontWeight: FontWeight.w500)),
+                 style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: Colors.black26),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(15),
+                  ),
                 ),
-              ],
+               ),
             ),
-          );
-        },
+          ],
+        ),
       ),
     );
   }

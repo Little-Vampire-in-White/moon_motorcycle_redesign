@@ -43,27 +43,32 @@ class _BookingScreenState extends State<BookingScreen> {
     return numberOfDays * widget.motorcycle.price;
   }
 
-  void _requestBooking() {
+  Future<void> _requestBooking() async {
     if (_startDate == null || _endDate == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select a date range.')));
       return;
     }
 
     final newBooking = Booking(
-      id: '', // Firestore will generate this
-      userId: _authService.currentUser!.uid,
+      id: '', // Backend will generate this
+      userId: _authService.currentUserId ?? '',
       motorcycleId: widget.motorcycle.id,
       startDate: _startDate!,
       endDate: _endDate!,
       totalCost: _calculateTotalCost(),
     );
 
-    _bookingService.createBooking(newBooking).then((_) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Booking request sent!')));
-      Navigator.of(context).pop();
-    }).catchError((_) {
-       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to send booking request.')));
-    });
+    try {
+      await _bookingService.createBooking(newBooking);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Booking request sent!')));
+        Navigator.of(context).pop();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to send booking request.')));
+      }
+    }
   }
 
  @override

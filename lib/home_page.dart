@@ -1,5 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:moon_motorcycle_redesign/models/motorcycle.dart';
@@ -8,6 +6,8 @@ import 'package:moon_motorcycle_redesign/notifications_screen.dart';
 import 'package:moon_motorcycle_redesign/profile_screen.dart';
 import 'package:moon_motorcycle_redesign/search_results_screen.dart';
 import 'package:moon_motorcycle_redesign/services/auth_service.dart';
+import 'package:moon_motorcycle_redesign/services/motorcycle_service.dart';
+import 'package:moon_motorcycle_redesign/services/story_service.dart';
 import 'package:moon_motorcycle_redesign/story_view_screen.dart';
 import 'package:swipable_stack/swipable_stack.dart';
 
@@ -20,30 +20,29 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final AuthService _authService = AuthService();
-  User? _user;
-  // Add a controller to manage the SwipableStack
+  final StoryService _storyService = StoryService();
+  final MotorcycleService _motorcycleService = MotorcycleService();
+  
+  Map<String, dynamic>? _user;
   late SwipableStackController _swipableStackController;
 
   @override
   void initState() {
     super.initState();
-    _user = _authService.currentUser;
+    _user = _authService.currentUserData;
     _swipableStackController = SwipableStackController();
   }
 
   void _refreshStories() {
-    // A way to force rebuild is to re-assign the controller
-    // This is a workaround for the package not having a direct reset method.
     setState(() {
       _swipableStackController = SwipableStackController();
     });
   }
 
-  String _formatTimestamp(Timestamp? timestamp) {
+  String _formatTimestamp(DateTime? timestamp) {
     if (timestamp == null) return '';
     final now = DateTime.now();
-    final storyTime = timestamp.toDate();
-    final difference = now.difference(storyTime);
+    final difference = now.difference(timestamp);
 
     if (difference.inDays > 0) {
       return '${difference.inDays}d ago';
@@ -58,20 +57,22 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    final user = _authService.currentUserData;
     return Scaffold(
       appBar: AppBar(
         toolbarHeight: 80,
         leading: Padding(
           padding: const EdgeInsets.only(left: 16.0),
           child: GestureDetector(
-            onTap: () {
-              Navigator.of(context).push(MaterialPageRoute(builder: (context) => const ProfileScreen()));
+            onTap: () async {
+              await Navigator.of(context).push(MaterialPageRoute(builder: (context) => const ProfileScreen()));
+              setState(() {});
             },
             child: Center(
               child: CircleAvatar(
                 radius: 28,
-                backgroundImage: _user?.photoURL != null
-                    ? NetworkImage(_user!.photoURL!)
+                backgroundImage: user?['photoURL'] != null && user!['photoURL'].toString().isNotEmpty
+                    ? NetworkImage(user['photoURL'])
                     : const NetworkImage('https://p7.hiclipart.com/preview/312/283/679/user-profile-get-em-card-linkedin-logo-social-media-silhouette.jpg'),
               ),
             ),
@@ -143,17 +144,17 @@ class _HomePageState extends State<HomePage> {
               const SizedBox(height: 20),
               SizedBox(
                 height: 280,
-                child: StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance.collection('stories').orderBy('createdAt', descending: true).snapshots(),
+                child: FutureBuilder<List<Story>>(
+                  future: _storyService.getStories(),
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
                       return const Center(child: CircularProgressIndicator());
                     }
-                    if (snapshot.hasError || !snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                    if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
                       return const Center(child: Text('No stories yet.'));
                     }
 
-                    final stories = snapshot.data!.docs;
+                    final stories = snapshot.data!;
 
                     return SwipableStack(
                       controller: _swipableStackController,
@@ -163,28 +164,26 @@ class _HomePageState extends State<HomePage> {
                         if (properties.index >= stories.length) {
                           return const Center(child: Text('No more stories.'));
                         }
-                        final storyDoc = stories[properties.index];
-                        final storyData = storyDoc.data() as Map<String, dynamic>;
-                        final timestamp = storyData['createdAt'] as Timestamp?;
+                        final story = stories[properties.index];
 
                         return GestureDetector(
                           onTap: () {
                             Navigator.of(context).push(MaterialPageRoute(
                               builder: (context) => StoryViewScreen(
-                                imageUrl: storyData['imageUrl'] ?? '',
-                                title: storyData['title'] ?? 'No Title',
-                                author: storyData['authorName'] ?? 'Anonymous',
-                                authorAvatarUrl: storyData['authorAvatarUrl'],
-                                date: _formatTimestamp(timestamp),
-                                description: storyData['description'] ?? '',
+                                imageUrl: story.imageUrl,
+                                title: story.title,
+                                author: story.authorName,
+                                authorAvatarUrl: story.authorAvatarUrl,
+                                date: _formatTimestamp(story.createdAt),
+                                description: story.description,
                               ),
                             ));
                           },
                           child: StoryCard(
-                            image: storyData['imageUrl'] ?? '',
-                            title: storyData['title'] ?? 'No Title',
-                            author: storyData['authorName'] ?? 'Anonymous',
-                            date: _formatTimestamp(timestamp),
+                            image: story.imageUrl,
+                            title: story.title,
+                            author: story.authorName,
+                            date: _formatTimestamp(story.createdAt),
                           ),
                         );
                       },
@@ -209,19 +208,17 @@ class _HomePageState extends State<HomePage> {
                 ],
               ),
               const SizedBox(height: 20),
-              StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance.collection('motorcycles').snapshots(),
+              FutureBuilder<List<Motorcycle>>(
+                future: _motorcycleService.getMotorcycles(),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
                   }
-                  if (snapshot.hasError || !snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                  if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
                     return const Center(child: Text('No motorcycles available.'));
                   }
 
-                  final motorcycles = snapshot.data!.docs
-                      .map((doc) => Motorcycle.fromMap(doc.id, doc.data() as Map<String, dynamic>))
-                      .toList();
+                  final motorcycles = snapshot.data!;
 
                   return ListView.builder(
                     shrinkWrap: true,
@@ -319,7 +316,7 @@ class StoryCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(15),
           boxShadow: [
             BoxShadow(
-              color: Colors.grey.withOpacity(0.2),
+              color: Colors.grey.withValues(alpha: 0.2),
               spreadRadius: 2,
               blurRadius: 10,
               offset: const Offset(0, 5),
@@ -386,7 +383,7 @@ class CategoryCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(15),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.2),
+            color: Colors.grey.withValues(alpha: 0.2),
             spreadRadius: 2,
             blurRadius: 10,
             offset: const Offset(0, 5),
@@ -415,7 +412,7 @@ class CategoryCard extends StatelessWidget {
             ),
             Container(
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.4),
+                color: Colors.black.withValues(alpha: 0.4),
               ),
             ),
             Center(

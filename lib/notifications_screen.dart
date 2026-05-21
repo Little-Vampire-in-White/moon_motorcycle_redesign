@@ -1,4 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:moon_motorcycle_redesign/services/auth_service.dart';
@@ -12,6 +11,13 @@ class NotificationsScreen extends StatefulWidget {
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
   final AuthService _authService = AuthService();
+  late Future<List<Map<String, dynamic>>> _notificationsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _notificationsFuture = _authService.getNotifications();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -30,13 +36,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         ),
         centerTitle: true,
       ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('users')
-            .doc(_authService.currentUser!.uid)
-            .collection('notifications')
-            .orderBy('timestamp', descending: true)
-            .snapshots(),
+      body: FutureBuilder<List<Map<String, dynamic>>>(
+        future: _notificationsFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -44,7 +45,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           if (snapshot.hasError) {
             return const Center(child: Text("Error loading notifications"));
           }
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          if (!snapshot.hasData || snapshot.data!.isEmpty) {
             return Center(
               child: Text(
                 'No notifications yet.',
@@ -53,31 +54,38 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             );
           }
 
-          final notifications = snapshot.data!.docs;
+          final notifications = snapshot.data!;
 
-          return ListView.builder(
-            padding: const EdgeInsets.all(16.0),
-            itemCount: notifications.length,
-            itemBuilder: (context, index) {
-              final notification = notifications[index].data() as Map<String, dynamic>;
-              final timestamp = notification['timestamp'] as Timestamp?;
-
-              return NotificationCard(
-                title: notification['title'] ?? 'No Title',
-                body: notification['body'] ?? 'No Body',
-                time: timestamp != null ? _formatTimestamp(timestamp) : 'Just now',
-                isRead: notification['isRead'] ?? false,
-              );
+          return RefreshIndicator(
+            onRefresh: () async {
+              setState(() {
+                _notificationsFuture = _authService.getNotifications();
+              });
             },
+            child: ListView.builder(
+              padding: const EdgeInsets.all(16.0),
+              itemCount: notifications.length,
+              itemBuilder: (context, index) {
+                final notification = notifications[index];
+                final timestampStr = notification['timestamp'] as String?;
+
+                return NotificationCard(
+                  title: notification['title'] ?? 'No Title',
+                  body: notification['body'] ?? 'No Body',
+                  time: timestampStr != null ? _formatTimestamp(timestampStr) : 'Just now',
+                  isRead: notification['isRead'] == 1 || notification['isRead'] == true,
+                );
+              },
+            ),
           );
         },
       ),
     );
   }
 
-  String _formatTimestamp(Timestamp timestamp) {
+  String _formatTimestamp(String timestampStr) {
     final now = DateTime.now();
-    final notificationTime = timestamp.toDate();
+    final notificationTime = DateTime.parse(timestampStr).toLocal();
     final difference = now.difference(notificationTime);
 
     if (difference.inSeconds < 60) {

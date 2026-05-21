@@ -1,9 +1,12 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:moon_motorcycle_redesign/models/booking.dart';
 import 'package:moon_motorcycle_redesign/services/auth_service.dart';
+import 'package:moon_motorcycle_redesign/services/booking_service.dart';
+import 'package:moon_motorcycle_redesign/services/story_service.dart';
+import 'package:moon_motorcycle_redesign/services/motorcycle_service.dart';
+import 'package:moon_motorcycle_redesign/models/motorcycle.dart';
 import 'package:moon_motorcycle_redesign/settings_screen.dart';
 import 'package:moon_motorcycle_redesign/upload_story_screen.dart';
 
@@ -17,13 +20,13 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final AuthService _authService = AuthService();
-  late final User? _user;
+  final BookingService _bookingService = BookingService();
+  final StoryService _storyService = StoryService();
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _user = _authService.currentUser;
   }
 
   @override
@@ -32,11 +35,10 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     super.dispose();
   }
 
-  String _formatTimestamp(Timestamp? timestamp) {
+  String _formatTimestamp(DateTime? timestamp) {
     if (timestamp == null) return '';
     final now = DateTime.now();
-    final storyTime = timestamp.toDate();
-    final difference = now.difference(storyTime);
+    final difference = now.difference(timestamp);
 
     if (difference.inDays > 0) {
       return '${difference.inDays}d ago';
@@ -51,165 +53,182 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
 
   @override
   Widget build(BuildContext context) {
+    final userData = _authService.currentUserData;
+    final displayName = userData?['displayName'] ?? 'Motorcycle Rider';
+    final address = userData?['address'] ?? 'Address Not Set';
+    final avatar = userData?['photoURL'] != null && userData!['photoURL'].isNotEmpty
+        ? NetworkImage(userData['photoURL'])
+        : const NetworkImage('https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=1887&auto=format&fit=crop');
+
     return Scaffold(
       backgroundColor: Colors.white,
-      body: FutureBuilder<DocumentSnapshot>(
-        future: _authService.getUserData(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError || !snapshot.hasData || !snapshot.data!.exists) {
-            return const Center(child: Text("Error loading profile")); // Handle error
-          }
-
-          final userData = snapshot.data!.data() as Map<String, dynamic>;
-
-          final displayName = userData['displayName'] ?? _user?.displayName ?? 'Motorcycle Rider';
-          final address = userData['address'] ?? 'Address Not Set';
-          final avatar =
-              _user?.photoURL != null && _user!.photoURL!.isNotEmpty
-                  ? NetworkImage(_user!.photoURL!)
-                  : const NetworkImage('https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=1887&auto=format&fit=crop');
-
-          return NestedScrollView(
-            headerSliverBuilder: (BuildContext context, bool innerBoxIsScrolled) {
-              return <Widget>[
-                SliverAppBar(
-                  backgroundColor: const Color(0xFF2C3E50),
-                  expandedHeight: 320.0,
-                  floating: false,
-                  pinned: true,
-                  leading: IconButton(
-                    icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 32),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-                  actions: [
-                    IconButton(
-                      icon: const Icon(Icons.shopping_cart_outlined, color: Colors.white, size: 32),
-                      onPressed: () {},
+      body: NestedScrollView(
+        headerSliverBuilder: (BuildContext context, bool innerBoxIsScrolled) {
+          return <Widget>[
+            SliverAppBar(
+              backgroundColor: const Color(0xFF2C3E50),
+              expandedHeight: 320.0,
+              floating: false,
+              pinned: true,
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 32),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.settings_outlined, color: Colors.white, size: 32),
+                  onPressed: () async {
+                    await Navigator.of(context).push(MaterialPageRoute(builder: (context) => const SettingsScreen()));
+                    if (mounted) setState(() {});
+                  },
+                ),
+              ],
+              flexibleSpace: FlexibleSpaceBar(
+                background: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Image.network(
+                      'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?q=80&w=2070&auto=format&fit=crop',
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) => Container(color: Colors.grey[200]),
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.settings_outlined, color: Colors.white, size: 32),
-                      onPressed: () async {
-                        await Navigator.of(context).push(MaterialPageRoute(builder: (context) => const SettingsScreen()));
-                        setState(() {}); // Rebuild to fetch data again after returning
-                      },
-                    ),
-                  ],
-                  flexibleSpace: FlexibleSpaceBar(
-                    background: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        Image.network(
-                          'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?q=80&w=2070&auto=format&fit=crop',
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) => Container(color: Colors.grey[200]),
+                    Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [Colors.black.withValues(alpha: 0.6), Colors.transparent],
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
                         ),
-                        Container(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [Colors.black.withOpacity(0.6), Colors.transparent],
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
+                      ),
+                    ),
+                    Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const SizedBox(height: 50),
+                          GestureDetector(
+                            onTap: () async {
+                              final ImagePicker picker = ImagePicker();
+                              final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+                              if (image != null) {
+                                final success = await _authService.uploadAvatar(image);
+                                if (success) {
+                                  setState(() {});
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('Profile picture updated successfully!')),
+                                    );
+                                  }
+                                } else {
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('Failed to update profile picture.')),
+                                    );
+                                  }
+                                }
+                              }
+                            },
+                            child: Stack(
+                              children: [
+                                CircleAvatar(
+                                  radius: 55,
+                                  backgroundImage: avatar,
+                                ),
+                                Positioned(
+                                  bottom: 0,
+                                  right: 0,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: const BoxDecoration(
+                                      color: Colors.white,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(Icons.camera_alt, color: Color(0xFF1A1A2E), size: 20),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                        ),
-                        Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const SizedBox(height: 50),
-                              CircleAvatar(
-                                radius: 55,
-                                backgroundImage: avatar,
-                              ),
-                              const SizedBox(height: 15),
-                              Text(
-                                displayName,
-                                style: GoogleFonts.poppins(
-                                  color: Colors.white,
-                                  fontSize: 28,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                address,
-                                style: GoogleFonts.poppins(
-                                  color: Colors.white.withOpacity(0.8),
-                                  fontSize: 18,
-                                ),
-                              ),
-                            ],
+                          const SizedBox(height: 15),
+                          Text(
+                            displayName,
+                            style: GoogleFonts.poppins(
+                              color: Colors.white,
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 6),
+                          Text(
+                            address,
+                            style: GoogleFonts.poppins(
+                              color: Colors.white.withValues(alpha: 0.8),
+                              fontSize: 18,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
+                  ],
                 ),
-                SliverPersistentHeader(
-                  delegate: _SliverAppBarDelegate(
-                    TabBar(
-                      controller: _tabController,
-                      tabs: const [
-                        Tab(text: 'My Rents/Bookings'),
-                        Tab(text: 'My Stories'),
-                      ],
-                      labelStyle: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w600),
-                      unselectedLabelStyle: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w500),
-                      labelColor: Colors.black,
-                      unselectedLabelColor: Colors.grey,
-                      indicatorColor: Colors.black,
-                      indicatorWeight: 3.0,
-                    ),
-                  ),
-                  pinned: true,
-                ),
-              ];
-            },
-            body: TabBarView(
-              controller: _tabController,
-              children: [
-                _buildMyBookings(),
-                _buildMyStories(),
-              ],
+              ),
             ),
-          );
+            SliverPersistentHeader(
+              delegate: _SliverAppBarDelegate(
+                TabBar(
+                  controller: _tabController,
+                  tabs: const [
+                    Tab(text: 'My Bookings'),
+                    Tab(text: 'My Stories'),
+                  ],
+                  labelStyle: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w600),
+                  unselectedLabelStyle: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w500),
+                  labelColor: Colors.black,
+                  unselectedLabelColor: Colors.grey,
+                  indicatorColor: Colors.black,
+                  indicatorWeight: 3.0,
+                ),
+              ),
+              pinned: true,
+            ),
+          ];
         },
+        body: TabBarView(
+          controller: _tabController,
+          children: [
+            _buildMyBookings(),
+            _buildMyStories(),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildMyBookings() {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('bookings')
-          .where('userId', isEqualTo: _user!.uid)
-          .where('status', isEqualTo: 'approved')
-          .snapshots(),
+    return FutureBuilder<List<Booking>>(
+      future: _bookingService.getUserBookings(_authService.currentUserId!),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
-        if (snapshot.hasError || !snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return Center(child: Text('You have no approved bookings.', style: GoogleFonts.poppins(fontSize: 16, color: Colors.grey)));
+        if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
+          return Center(child: Text('You have no bookings.', style: GoogleFonts.poppins(fontSize: 16, color: Colors.grey)));
         }
 
-        final bookings = snapshot.data!.docs.map((doc) => Booking.fromMap(doc.id, doc.data() as Map<String, dynamic>)).toList();
+        final bookings = snapshot.data!;
 
         return ListView.builder(
           padding: const EdgeInsets.all(8.0),
           itemCount: bookings.length,
           itemBuilder: (context, index) {
             final booking = bookings[index];
-            return FutureBuilder<DocumentSnapshot>(
-              future: FirebaseFirestore.instance.collection('motorcycles').doc(booking.motorcycleId).get(),
+            return FutureBuilder<Motorcycle?>(
+              future: MotorcycleService().getMotorcycleById(booking.motorcycleId),
               builder: (context, motorcycleSnapshot) {
                 if (!motorcycleSnapshot.hasData) {
-                  return const SizedBox(); // Or a loading indicator
+                  return const SizedBox();
                 }
-                final motorcycleData = motorcycleSnapshot.data!.data() as Map<String, dynamic>;
+                final motorcycleData = motorcycleSnapshot.data!;
 
                 return Card(
                   margin: const EdgeInsets.symmetric(vertical: 8.0),
@@ -222,7 +241,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                         ClipRRect(
                           borderRadius: BorderRadius.circular(10),
                           child: Image.network(
-                            motorcycleData['imageUrl'] ?? '',
+                            motorcycleData.imageUrl,
                             width: 80,
                             height: 80,
                             fit: BoxFit.cover,
@@ -234,8 +253,9 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(motorcycleData['name'] ?? 'N/A', style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 18)),
+                              Text(motorcycleData.name, style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 18)),
                               const SizedBox(height: 8),
+                              Text('Status: ${booking.status}', style: GoogleFonts.poppins(fontWeight: FontWeight.w500, color: booking.status == 'approved' ? Colors.green : Colors.orange)),
                               Text('From: ${booking.startDate.toLocal().toString().split(' ')[0]}', style: GoogleFonts.poppins()),
                               Text('To:     ${booking.endDate.toLocal().toString().split(' ')[0]}', style: GoogleFonts.poppins()),
                               const SizedBox(height: 8),
@@ -264,21 +284,17 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
         child: const Icon(Icons.add, color: Colors.white),
         backgroundColor: const Color(0xFF1A1A2E),
       ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('stories')
-            .where('authorId', isEqualTo: _user!.uid)
-            .orderBy('createdAt', descending: true)
-            .snapshots(),
+      body: FutureBuilder<List<Story>>(
+        future: _storyService.getStoriesByAuthor(_authService.currentUserId ?? ''),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
-          if (snapshot.hasError || !snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return Center(child: Text('You haven\'t posted any stories yet.', style: GoogleFonts.poppins(fontSize: 16, color: Colors.grey)));
-          }
+          if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
+          return Center(child: Text('You haven\'t posted any stories yet.', style: GoogleFonts.poppins(fontSize: 16, color: Colors.grey)));
+        }
 
-          final stories = snapshot.data!.docs;
+        final stories = snapshot.data!;
 
           return GridView.builder(
             padding: const EdgeInsets.all(8.0),
@@ -290,8 +306,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
             ),
             itemCount: stories.length,
             itemBuilder: (context, index) {
-              final story = stories[index].data() as Map<String, dynamic>;
-              final timestamp = story['createdAt'] as Timestamp?;
+              final story = stories[index];
 
               return ClipRRect(
                 borderRadius: BorderRadius.circular(15.0),
@@ -299,7 +314,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                   fit: StackFit.expand,
                   children: [
                     Image.network(
-                      story['imageUrl'] ?? '',
+                      story.imageUrl,
                       fit: BoxFit.cover,
                       errorBuilder: (context, error, stackTrace) => const Icon(Icons.error),
                     ),
@@ -311,7 +326,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                         padding: const EdgeInsets.all(12.0),
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
-                            colors: [Colors.black.withOpacity(0.8), Colors.transparent],
+                            colors: [Colors.black.withValues(alpha: 0.8), Colors.transparent],
                             begin: Alignment.bottomCenter,
                             end: Alignment.topCenter,
                           ),
@@ -320,7 +335,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              story['title'] ?? 'No Title',
+                              story.title,
                               style: GoogleFonts.poppins(
                                 color: Colors.white,
                                 fontWeight: FontWeight.bold,
@@ -331,7 +346,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              _formatTimestamp(timestamp),
+                              _formatTimestamp(story.createdAt),
                               style: GoogleFonts.poppins(
                                 color: Colors.white70,
                                 fontSize: 12,

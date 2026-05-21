@@ -1,21 +1,13 @@
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:moon_motorcycle_redesign/firebase_options.dart';
 import 'package:moon_motorcycle_redesign/home_page.dart';
 import 'package:moon_motorcycle_redesign/onboarding_screen.dart';
 import 'package:moon_motorcycle_redesign/services/auth_service.dart';
 import 'package:moon_motorcycle_redesign/services/notification_service.dart';
 
-String? fcmToken;
-
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-  fcmToken = await NotificationService().init();
+  await NotificationService().init();
   runApp(const MyApp());
 }
 
@@ -46,10 +38,9 @@ class AuthWrapper extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<User?>(
-      stream: AuthService().authStateChanges,
+    return FutureBuilder<bool>(
+      future: AuthService().tryAutoLogin(),
       builder: (context, snapshot) {
-        // While waiting for connection, show a loading indicator
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
             body: Center(
@@ -57,11 +48,9 @@ class AuthWrapper extends StatelessWidget {
             ),
           );
         }
-        // If user is logged in, show HomePage
-        if (snapshot.hasData) {
+        if (snapshot.data == true) {
           return const HomePage();
         }
-        // If user is not logged in, show OnboardingScreen
         return const OnboardingScreen();
       },
     );

@@ -19,7 +19,7 @@ class Motorcycle {
     required this.torque,
   });
 
-  factory Motorcycle.fromMap(String id, Map<String, dynamic> data) {
+  factory Motorcycle.fromJson(Map<String, dynamic> json) {
     double _parsePrice(dynamic price) {
       if (price is num) {
         return price.toDouble();
@@ -31,19 +31,20 @@ class Motorcycle {
     }
 
     return Motorcycle(
-      id: id,
-      name: data['name'] ?? '',
-      description: data['description'] ?? '',
-      price: _parsePrice(data['price']),
-      imageUrl: data['imageUrl'] ?? '',
-      engine: data['engine'] ?? '',
-      power: data['power'] ?? '',
-      torque: data['torque'] ?? '',
+      id: json['id']?.toString() ?? '',
+      name: json['name'] ?? '',
+      description: json['description'] ?? '',
+      price: _parsePrice(json['price']),
+      imageUrl: json['imageUrl'] ?? '',
+      engine: json['engine'] ?? '',
+      power: json['power'] ?? '',
+      torque: json['torque'] ?? '',
     );
   }
 
-  Map<String, dynamic> toMap() {
+  Map<String, dynamic> toJson() {
     return {
+      'id': id,
       'name': name,
       'description': description,
       'price': price,

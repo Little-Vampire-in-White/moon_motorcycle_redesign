@@ -1,8 +1,6 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:moon_motorcycle_redesign/account_screen.dart';
-import 'package:moon_motorcycle_redesign/admin_dashboard_screen.dart';
 import 'package:moon_motorcycle_redesign/change_password_screen.dart';
 import 'package:moon_motorcycle_redesign/login_activity_screen.dart';
 import 'package:moon_motorcycle_redesign/notifications_screen.dart';
@@ -18,25 +16,6 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   final AuthService _authService = AuthService();
-  bool _isAdmin = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _checkAdminStatus();
-  }
-
-  void _checkAdminStatus() async {
-    final DocumentSnapshot userDoc = await _authService.getUserData();
-    if (userDoc.exists) {
-      final data = userDoc.data() as Map<String, dynamic>;
-      if (mounted) {
-        setState(() {
-          _isAdmin = data['isAdmin'] == true;
-        });
-      }
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -67,31 +46,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Navigator.of(context).push(MaterialPageRoute(builder: (context) => const NotificationsScreen()));
             },
           ),
-          _buildSettingsTile(icon: Icons.privacy_tip_outlined, title: 'Privacy', color: Colors.purple, context: context),
+          _buildSettingsTile(
+            icon: Icons.privacy_tip_outlined,
+            title: 'Privacy',
+            color: Colors.purple,
+            context: context,
+            onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Privacy settings coming soon!'))),
+          ),
           _buildSettingsTile(icon: Icons.security_outlined, title: 'Security', color: Colors.teal, context: context, onTap: () {
             Navigator.of(context).push(MaterialPageRoute(builder: (context) => const SecurityScreen()));
           }),
-          _buildSettingsTile(icon: Icons.chat_bubble_outline_rounded, title: 'Chat', color: Colors.red, context: context),
+          _buildSettingsTile(
+            icon: Icons.chat_bubble_outline_rounded,
+            title: 'Chat',
+            color: Colors.red,
+            context: context,
+            onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Chat support coming soon!'))),
+          ),
           _buildSettingsTile(icon: Icons.account_circle_outlined, title: 'Account', color: Colors.yellow, context: context, onTap: () {
             Navigator.of(context).push(MaterialPageRoute(builder: (context) => const AccountScreen()));
           }),
           const Divider(color: Colors.black12, indent: 20, endIndent: 20),
-          _buildSettingsTile(icon: Icons.help_outline, title: 'Help', color: Colors.pink, context: context),
+          _buildSettingsTile(
+            icon: Icons.help_outline,
+            title: 'Help',
+            color: Colors.pink,
+            context: context,
+            onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Help Center coming soon!'))),
+          ),
           _buildSettingsTile(icon: Icons.info_outline, title: 'About', color: Colors.blue, context: context),
           _buildSettingsTile(icon: Icons.report_gmailerrorred_outlined, title: 'Report', color: Colors.green, context: context),
-          if (_isAdmin)
-            Padding(
-              padding: const EdgeInsets.only(top: 10.0),
-              child: _buildSettingsTile(
-                icon: Icons.admin_panel_settings_outlined,
-                title: 'Admin Dashboard',
-                color: Colors.redAccent,
-                context: context,
-                onTap: () {
-                  Navigator.of(context).push(MaterialPageRoute(builder: (context) => const AdminDashboardScreen()));
-                },
-              ),
-            ),
           const Divider(color: Colors.black12, indent: 20, endIndent: 20),
           _buildSettingsTile(
             icon: Icons.logout,
@@ -99,11 +83,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
             color: Colors.grey,
             context: context,
             onTap: () async {
-              await _authService.signOut();
-              Navigator.of(context).pushAndRemoveUntil(
-                MaterialPageRoute(builder: (context) => const OnboardingScreen()),
-                (Route<dynamic> route) => false,
-              );
+              await _authService.logout();
+              if (context.mounted) {
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (context) => const OnboardingScreen()),
+                  (Route<dynamic> route) => false,
+                );
+              }
             },
           ),
         ],
@@ -116,7 +102,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       leading: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
+          color: color.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(10),
         ),
         child: Icon(icon, color: color, size: 28),
@@ -175,7 +161,7 @@ class SecurityScreen extends StatelessWidget {
       leading: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
+          color: color.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(10),
         ),
         child: Icon(icon, color: color, size: 28),

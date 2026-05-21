@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:moon_motorcycle_redesign/main.dart';
 import 'package:moon_motorcycle_redesign/home_page.dart';
-import 'package:moon_motorcycle_redesign/otp_screen.dart';
 import 'package:moon_motorcycle_redesign/services/auth_service.dart';
 import 'package:moon_motorcycle_redesign/signup_screen.dart';
 import 'package:moon_motorcycle_redesign/services/notification_service.dart';
@@ -93,14 +91,14 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 controller: _tabController,
                 children: [
                   _buildEmailLogin(),
-                  _buildPhoneLogin(),
+                  Center(child: Text('Phone login coming soon', style: GoogleFonts.poppins())),
                 ],
               ),
             ),
             const SizedBox(height: 20),
             Center(
               child: Text(
-                'Sign in with google',
+                'Social login options',
                 style: GoogleFonts.poppins(fontSize: 16, color: Colors.grey[600]),
               ),
             ),
@@ -109,12 +107,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
               height: 60,
               width: double.infinity,
               child: OutlinedButton.icon(
-                onPressed: () async {
-                  final user = await _authService.signInWithGoogle(fcmToken: fcmToken);
-                  if (user != null) {
-                    _notificationService.showLoginNotification();
-                    Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (context) => const HomePage()));
-                  }
+                onPressed: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Social login is currently disabled')),
+                  );
                 },
                 icon: Image.network(
                   'http://pngimg.com/uploads/google/google_PNG19635.png', 
@@ -174,10 +170,18 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             width: double.infinity,
             child: ElevatedButton(
               onPressed: () async {
-                final user = await _authService.signInWithEmailAndPassword(_emailController.text, _passwordController.text, fcmToken: fcmToken);
-                if (user != null) {
+                final success = await _authService.login(_emailController.text, _passwordController.text);
+                if (success) {
                   _notificationService.showLoginNotification();
-                  Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (context) => const HomePage()));
+                  if (mounted) {
+                    Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (context) => const HomePage()));
+                  }
+                } else {
+                   if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Login failed. Check your credentials.')),
+                    );
+                  }
                 }
               },
               style: ElevatedButton.styleFrom(
@@ -210,7 +214,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             width: double.infinity,
             child: ElevatedButton(
               onPressed: () {
-                Navigator.of(context).push(MaterialPageRoute(builder: (context) => OtpScreen(phoneNumber: _phoneController.text)));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Phone login is currently disabled')),
+                );
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF1A1A2E),
